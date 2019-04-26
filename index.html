@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Chat</title>
+    <style>
+        #videos {
+            display: none;
+            position: absolute;
+            bottom: 40px;
+            left: 2px;
+            width: 68%;
+            height: 95%;
+        }
+
+        #videos video {
+            display: block;
+        }
+
+        #videoLocal {
+            width: 200px;
+            position: relative;
+            left: 50%;
+            transform: translate(-50%, 0%);
+        }
+
+        #videoRemoto {
+            width: 600px;
+            position: relative;
+            left: 50%;
+            transform: translate(-50%, 0%);
+            margin: 7px;
+        }
+
+        #mensagens {
+            position: absolute;
+            right: 0;
+            top: 0;
+            margin: 2px;
+            height: 94.5%;
+            width: 400px;
+            overflow-y: scroll;
+            border: solid 1px black;
+        }
+
+        #chat {
+            position: absolute;
+            bottom: 0;
+            width: 98%;
+            height: 10%;
+            padding: 0;
+            margin: 0;
+        }
+
+        #chat textarea {
+            width: 95%;
+            resize: none;
+            position: absolute;
+            bottom: 2px;
+            left: 2px;      
+        }
+
+        #chat button {
+            width: 4%;
+            display: inline-block;
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+        }
+
+        #definicaoNomeUsuario {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 250px;
+            line-height: 100px;
+            text-align: center;
+            border: solid 2px black;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+    <script type='text/javascript' src='https://cdn.scaledrone.com/scaledrone.min.js'></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.dev.js"></script>
+</head>
+<body>
+    <div id="videos">
+        <video id="videoRemoto" autoplay></video>
+        <video id="videoLocal" autoplay></video>
+        <button id="botaoConvite" onclick="enviarConviteVideoChat()">Iniciar Chamada de vídeo</button>
+    </div>
+    <div id="app">
+        <div v-show="!nomeUsuarioDefinido" id="definicaoNomeUsuario">
+            <input type="text" v-model="nomeUsuario" placeholder="Usuario" v-on:keypress.enter="definirNomeUsuario">
+            <button v-on:click.prevent="definirNomeUsuario">Entrar</button>
+        </div>
+        <div v-show="nomeUsuarioDefinido">
+            <div id="mensagens" >
+                <div class="mensagem" v-for="mensagem in mensagens">
+                    <span v-if="!mensagem.convite">
+                        <strong>{{ mensagem.autor }}:</strong> {{ mensagem.conteudo }}
+                    </span>
+                    <span v-else>
+                        <button v-on:click.prevent="iniciarChatVideo(mensagem.convite)">Iniciar video chat com {{ mensagem.autor }}</a>
+                    </span>
+                </div>
+            </div>
+            <div id="chat">
+                <textarea id="campoEnvioMensagem" v-on:keypress.enter="enviarMensagem" v-model="mensagem" rows="1"></textarea>
+                <button v-on:click.prevent="enviarMensagem">Enviar</button>
+            </div>
+        </div>
+    </div>
+</body>
+<script>
+    const socket = io('http://localhost:3000');
+    var videoLocal = document.getElementById('videoLocal')
+    var videoRemoto = document.getElementById('videoRemoto');
+    const app = new Vue({
+        el: '#app',
+
+        data: {
+            mensagem: '',
+            mensagens: [],
+            nomeUsuario: '',
+            nomeUsuarioDefinido: false
+        },
+        
+        methods: {
+            receberMensagens: function (mensagens) {
+                mensagens.forEach(mensagem => {
+                    this.mensagens.push(mensagem);
+                },this);
+            },
+
+            receberMensagem: function (mensagem) {
+                this.mensagens.push(mensagem);
+            },
+
+            enviarMensagem: function () {
+                var mensagem = {
+                    autor: this.nomeUsuario,
+                    conteudo: this.mensagem
+                };
+
+                this.mensagens.push(mensagem);
+                socket.emit('mensagemEnviada', mensagem);
+                this.mensagem = '';
+            },
+
+            definirNomeUsuario: function () {
+                if (this.nomeUsuario) {
+                    this.nomeUsuarioDefinido = true;
+                }
+
+                document.getElementById('videos').style.display = 'block';
+            },
+
+            iniciarChatVideo: function (codigoSala) {
+                iniciarChatVideo(codigoSala);
+            }
+        }
+    });
+
+    function enviarConviteVideoChat() {
+        var codigoSala = prompt('Informe o código da sala de chat que quer abrir');
+        var convite = {
+            convite: codigoSala,
+            autor: app.nomeUsuario
+        }
+        
+        app.receberMensagem(convite)
+        socket.emit('conviteEnviado', convite);
+        iniciarChatVideo(codigoSala);
+    }
+
+    socket.on('mensagensRecebidas', mensagens => {
+        app.receberMensagens(mensagens);
+    });
+
+    socket.on('mensagemRecebida', mensagem => {
+        app.receberMensagem(mensagem);
+    });
+
+    socket.on('conviteRecebido', convite => {
+        app.receberMensagem(convite);
+    });
+</script>
+<script id="scaledrone">
+    function iniciarChatVideo (codigoSala) {
+        document.getElementById('botaoConvite').hidden = true;
+        // Generate random room name if needed
+        location.hash = codigoSala;
+        const roomHash = location.hash.substring(1);
+        
+        // TODO: Replace with your own channel ID
+        const drone = new ScaleDrone('2xmbUiTsqTzukyf7');
+        // Room name needs to be prefixed with 'observable-'
+        const roomName = 'observable-' + roomHash;
+        const configuration = {
+            iceServers: [{
+                urls: 'stun:stun.l.google.com:19302'
+            }]
+        };
+        let room;
+        let pc;
+        
+        
+        function onSuccess() {};
+        function onError(error) {
+            console.error(error);
+        };
+        
+        drone.on('open', error => {
+            if (error) {
+                return console.error(error);
+            }
+            room = drone.subscribe(roomName);
+            room.on('open', error => {
+                if (error) {
+                onError(error);
+                }
+            });
+            // We're connected to the room and received an array of 'members'
+            // connected to the room (including us). Signaling server is ready.
+            room.on('members', members => {
+                console.log('MEMBERS', members);
+                // If we are the second user to connect to the room we will be creating the offer
+                const isOfferer = members.length === 2;
+                startWebRTC(isOfferer);
+            });
+        });
+        
+        // Send signaling data via Scaledrone
+        function sendMessage(message) {
+            drone.publish({
+                room: roomName,
+                message
+            });
+        }
+        
+        function startWebRTC(isOfferer) {
+        pc = new RTCPeerConnection(configuration);
+        
+        // 'onicecandidate' notifies us whenever an ICE agent needs to deliver a
+        // message to the other peer through the signaling server
+        pc.onicecandidate = event => {
+            if (event.candidate) {
+                sendMessage({'candidate': event.candidate});
+            }
+        };
+        
+        // If user is offerer let the 'negotiationneeded' event create the offer
+        if (isOfferer) {
+            pc.onnegotiationneeded = () => {
+                pc.createOffer().then(localDescCreated).catch(onError);
+            }
+        }
+        
+        // When a remote stream arrives display it in the #remoteVideo element
+        pc.onaddstream = event => {
+            videoRemoto.srcObject = event.stream;
+        };
+        
+        navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: true,
+        }).then(stream => {
+            // Display your local video in #localVideo element
+            videoLocal.srcObject = stream;
+            // Add your stream to be sent to the conneting peer
+            pc.addStream(stream);
+        }, onError);
+        
+        // Listen to signaling data from Scaledrone
+        room.on('data', (message, client) => {
+            // Message was sent by us
+            if (client.id === drone.clientId) {
+                return;
+            }
+        
+            if (message.sdp) {
+                // This is called after receiving an offer or answer from another peer
+                pc.setRemoteDescription(new RTCSessionDescription(message.sdp), () => {
+                    // When receiving an offer lets answer it
+                    if (pc.remoteDescription.type === 'offer') {
+                    pc.createAnswer().then(localDescCreated).catch(onError);
+                    }
+                }, onError);
+            } else if (message.candidate) {
+                // Add the new ICE candidate to our connections remote description
+                pc.addIceCandidate(
+                    new RTCIceCandidate(message.candidate), onSuccess, onError
+                );
+            }
+        });
+        }
+        
+        function localDescCreated(desc) {
+            pc.setLocalDescription(
+                desc,
+                () => sendMessage({'sdp': pc.localDescription}),
+                onError
+            );
+        }
+    }
+</script>
+</html>
